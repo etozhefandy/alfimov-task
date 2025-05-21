@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import openai
 import locale
 
-locale.setlocale(locale.LC_ALL, "ru_RU.UTF-8")
+# locale.setlocale(locale.LC_ALL, "ru_RU.UTF-8")
 
 TELEGRAM_TOKEN = "7663432453:AAGI8NSXu3I4Xz4ufzZ9Sc1Xxs68P9M5q7s"
 OPENAI_API_KEY = "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"
