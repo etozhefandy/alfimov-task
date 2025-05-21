@@ -1,0 +1,124 @@
+Python 3.13.2 (v3.13.2:4f8bb3947cf, Feb  4 2025, 11:51:10) [Clang 15.0.0 (clang-1500.3.9.4)] on darwin
+Type "help", "copyright", "credits" or "license()" for more information.
+# requirements.txt
+# aiogram==3.0.0b7
+# google-cloud-speech==2.20.0
+# python-dotenv==1.0.1
+# aiohttp==3.9.3
+
+# Шаг 1. Установи библиотеки
+# pip install aiogram==3.0.0b7 google-cloud-speech python-dotenv aiohttp
+
+# Шаг 2. Создай .env файл с переменными окружения:
+# GOOGLE_APPLICATION_CREDENTIALS=google-key.json
+
+import os
+import asyncio
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message, CallbackQuery
+from aiogram.enums import ParseMode
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import CommandStart, Command
+from google.cloud import speech
+from google.cloud.speech import RecognitionAudio, RecognitionConfig
+from dotenv import load_dotenv
+from tempfile import NamedTemporaryFile
+from aiohttp import ClientSession
+
+# Подключение переменных окружения
+load_dotenv()
+
+# Используем API-ключ напрямую, но лучше хранить его в .env
+TELEGRAM_TOKEN = "7663432453:AAGI8NSXu3I4Xz4ufzZ9Sc1Xxs68P9M5q7s"
+GOOGLE_KEY_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
+bot = Bot(token=TELEGRAM_TOKEN, parse_mode=ParseMode.HTML)
+dp = Dispatcher()
+
+# Память задач {user_id: [(task_id, text)]}
+task_storage = {}
+task_counter = 0
+
+# Команда /start
+@dp.message(CommandStart())
+async def cmd_start(message: Message):
+    await message.answer("Привет! Отправь голосовое или текстовое сообщение, чтобы добавить задачу или напоминание.")
+
+# Команда /tasks – показать список
+@dp.message(Command("tasks"))
+async def show_tasks(message: Message):
+    user_tasks = task_storage.get(message.from_user.id, [])
+    if not user_tasks:
+        await message.answer("У вас нет задач ✅")
+        return
+
+    for task_id, task_text in user_tasks:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Выполнено", callback_data=f"done:{task_id}")]
+        ])
+        await message.answer(f"📌 {task_text}", reply_markup=keyboard)
+
+# Обработка текстовых сообщений – добавление задачи
+@dp.message(F.text)
+async def handle_text(message: Message):
+    global task_counter
+    task_counter += 1
+    task = (task_counter, message.text)
+    task_storage.setdefault(message.from_user.id, []).append(task)
+    await message.answer(f"📝 Задача добавлена: {message.text}")
+
+# Обработка голосовых сообщений – распознавание и добавление как задача
+@dp.message(F.voice)
+async def handle_voice(message: Message):
+    global task_counter
+    file = await bot.get_file(message.voice.file_id)
+    file_path = file.file_path
+    file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
+
+    async with ClientSession() as session:
+        async with session.get(file_url) as resp:
+            voice_data = await resp.read()
+
+    with NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
+        tmp.write(voice_data)
+        tmp_path = tmp.name
+
+    # Настройка клиента Google Speech
+...     client = speech.SpeechClient()
+...     with open(tmp_path, "rb") as audio_file:
+...         content = audio_file.read()
+...     audio = RecognitionAudio(content=content)
+...     config = RecognitionConfig(
+...         encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
+...         sample_rate_hertz=48000,
+...         language_code="ru-RU"
+...     )
+... 
+...     response = client.recognize(config=config, audio=audio)
+...     os.remove(tmp_path)
+... 
+...     if response.results:
+...         text = response.results[0].alternatives[0].transcript
+...         task_counter += 1
+...         task = (task_counter, text)
+...         task_storage.setdefault(message.from_user.id, []).append(task)
+...         await message.answer(f"📝 Задача добавлена: {text}")
+...     else:
+...         await message.answer("Не удалось распознать голосовое сообщение 😔")
+... 
+... # Обработка кнопки "Выполнено"
+... @dp.callback_query(F.data.startswith("done:"))
+... async def mark_done(callback: CallbackQuery):
+...     user_id = callback.from_user.id
+...     task_id = int(callback.data.split(":")[1])
+...     tasks = task_storage.get(user_id, [])
+...     task_storage[user_id] = [t for t in tasks if t[0] != task_id]
+...     await callback.message.edit_text(f"✅ Задача выполнена: {callback.message.text}")
+...     await callback.answer("Готово!")
+... 
+... # Запуск бота
+... async def main():
+...     await dp.start_polling(bot)
+... 
+... if __name__ == "__main__":
+...     asyncio.run(main())
