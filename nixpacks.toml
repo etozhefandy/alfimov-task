@@ -2,3 +2,6 @@
 nixPkgs = ["ffmpeg"]
 
 providers = ["python"]
+
+[start]
+cmd = "python3 main.py"
