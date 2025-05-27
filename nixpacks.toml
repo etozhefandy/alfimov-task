@@ -1,5 +1,4 @@
 [phases.setup]
 nixPkgs = ["ffmpeg"]
 
-[providers]
-python = "3.11"
+providers = ["python"]
