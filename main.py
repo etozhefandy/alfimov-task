@@ -130,17 +130,34 @@ async def back_to_menu(message: types.Message):
 
 @dp.message(F.voice)
 async def handle_voice(message: types.Message):
-    file = await bot.get_file(message.voice.file_id)
-    voice_path = await bot.download_file(file.file_path)
-    with open("audio.ogg", "wb") as f:
-        f.write(voice_path.read())
-    with open("audio.ogg", "rb") as audio_file:
-        transcript = openai.Audio.transcribe("whisper-1", audio_file)
-        text = transcript.get("text", "")
+    # Скачиваем файл
+    file_info = await bot.get_file(message.voice.file_id)
+    file_path = file_info.file_path
+    downloaded_file = await bot.download_file(file_path)
+
+    ogg_path = "audio.ogg"
+    with open(ogg_path, "wb") as f:
+        f.write(downloaded_file.read())
+
+    # Переводим в mp3 через ffmpeg (он должен быть установлен в Railway или локально)
+    mp3_path = "audio.mp3"
+    import subprocess
+    subprocess.run(["ffmpeg", "-i", ogg_path, mp3_path, "-y"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # Отправляем в OpenAI на распознавание
+    with open(mp3_path, "rb") as audio_file:
+        transcript = openai.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+            language="ru"
+        )
+        text = transcript.text
+
     if text:
         await handle_task(message, override_text=text)
     else:
         await message.answer("Не удалось распознать задачу.")
+
 
 @dp.message(F.text)
 async def handle_task(message: types.Message, override_text=None):
